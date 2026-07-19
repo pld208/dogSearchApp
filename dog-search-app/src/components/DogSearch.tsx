@@ -26,6 +26,8 @@ interface DogApiSearchResponse {
   data: DogAttributeData[];
 }
 
+const STOCK_DOG_IMAGE = "/dog-placeholder.svg";
+
 export const DogSearch: React.FC = () => {
   const [allBreeds, setAllBreeds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -81,11 +83,19 @@ export const DogSearch: React.FC = () => {
     return lowerCaseBreed;
   };
 
+  // Selecting a suggestion just fills the input, like Google's autocomplete —
+  // the actual search runs separately (Enter key or the search icon).
+  const handleSuggestionClick = (breedName: string) => {
+    setSearchTerm(breedName);
+    setFilteredBreeds([]);
+  };
+
   // 3. Fetch dog image and attributes
-  const handleSelectBreed = async (breedName: string) => {
+  const handleSearch = async (breedName: string) => {
+    if (!breedName.trim()) return;
+
     setLoading(true);
     setError(null);
-    setSearchTerm(breedName);
     setFilteredBreeds([]);
     setSelectedDogImage(null);
     setSelectedAttributes(null);
@@ -94,10 +104,11 @@ export const DogSearch: React.FC = () => {
     const normalizedBreedName = formatBreedNames(breedName);
 
     try {
-      //grab random images
-      const imagePromise = await fetch(`https://dog.ceo/api/breed/${breedName}/images/random`)
-      .then((res) => res.json())
-      .then((data) => data.message);
+      //grab random images; fall back to a stock image if the breed has no photo
+      const imagePromise = fetch(`https://dog.ceo/api/breed/${breedName}/images/random`)
+        .then((res) => res.json())
+        .then((data) => data.message as string)
+        .catch(() => STOCK_DOG_IMAGE);
 
       // Query Dog API for attributes (the API ignores query filters, so fetch
       // the full list and match client-side)
@@ -113,7 +124,7 @@ export const DogSearch: React.FC = () => {
       // Fetch attributes from Dog API parallel to image fetch
       const [imgUrl, attributes] = await Promise.all([imagePromise, attributesPromise]);
 
-      setSelectedDogImage(imgUrl);
+      setSelectedDogImage(imgUrl || STOCK_DOG_IMAGE);
       setSelectedAttributes(attributes);
 
       // Fallback strategy: If explicit string match failed, do a broader partial scan of the dataset
@@ -130,11 +141,12 @@ export const DogSearch: React.FC = () => {
         if (partialMatch) {
           setSelectedAttributes(partialMatch.attributes);
         } else {
-          setError(`Image loaded. Facts for "${normalizedBreedName}" aren't supported yet in the data library.`);
+          setError(`Facts are still being pondered for "${normalizedBreedName}", so sorry!`);
         }
       }
     } catch (err) {
       console.error('Ruh-roh! Error fetching dog details:', err);
+      setSelectedDogImage(STOCK_DOG_IMAGE);
       setError('Failed to fetch data from API endpoints.');
     } finally {
       setLoading(false);
@@ -143,7 +155,6 @@ export const DogSearch: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'Roboto', padding: '20px' }}>
-      <h2>Dog Explorer</h2>
 
       <div style={{ position: 'relative' }}>
         <input
@@ -151,8 +162,36 @@ export const DogSearch: React.FC = () => {
           placeholder="Woof woof, type breed name (e.g., poodle, boxer)..."
           value={searchTerm}
           onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-          style={{ width: '100%', padding: '12px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSearch(searchTerm);
+          }}
+          style={{ width: '100%', padding: '12px 44px 12px 12px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }}
         />
+
+        <button
+          type="button"
+          aria-label="Search"
+          onClick={() => handleSearch(searchTerm)}
+          style={{
+            position: 'absolute',
+            right: '6px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#666'
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </button>
 
         {filteredBreeds.length > 0 && (
           <ul style={{
@@ -172,7 +211,7 @@ export const DogSearch: React.FC = () => {
             {filteredBreeds.map((breed) => (
               <li
                 key={breed}
-                onClick={() => handleSelectBreed(breed)}
+                onClick={() => handleSuggestionClick(breed)}
                 style={{ padding: '10px 12px', cursor: 'pointer', textTransform: 'capitalize' }}
                 onMouseOver={(e) => e.currentTarget.style.background = '#f5f5f5'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'white'}
@@ -199,6 +238,7 @@ export const DogSearch: React.FC = () => {
               <img
                 src={selectedDogImage}
                 alt={searchTerm}
+                onError={(e) => { e.currentTarget.src = STOCK_DOG_IMAGE; }}
                 style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'cover', borderRadius: '6px' }}
               />
             </div>

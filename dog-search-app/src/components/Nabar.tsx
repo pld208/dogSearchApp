@@ -28,12 +28,7 @@ export default function ButtonAppBar() {
               src="/logo.png"
             />
           </Link>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Favorites
-          </Typography>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Search
-          </Typography>
+      
           <Button color="inherit">Login</Button>
         </Toolbar>
       </AppBar>
