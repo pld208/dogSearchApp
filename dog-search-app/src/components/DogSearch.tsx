@@ -1,6 +1,10 @@
 "use client";
 import React, { useState, useEffect, ChangeEvent } from "react";
 import CircularProgress from '@mui/material/CircularProgress';
+import { Card, CardHeader, IconButton, Typography, Checkbox } from '@mui/material';
+import CardContent from '@mui/material/CardContent';
+import { FavoriteBorder, Favorite } from '@mui/icons-material';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // Dog CEO API for IMAGES
 interface DogCeoResponse {
@@ -154,7 +158,7 @@ export const DogSearch: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'Roboto', padding: '20px' }}>
+    <div style={{ maxWidth: '500px', margin: '0 auto', fontFamily: 'Roboto', padding: '10px' }}>
 
       <div style={{ position: 'relative' }}>
         <input
@@ -224,6 +228,7 @@ export const DogSearch: React.FC = () => {
       </div>
 
       {loading && (
+         
   <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px' }}>
     <CircularProgress sx={{ color: '#dea037' }} />
   </div>
@@ -231,8 +236,35 @@ export const DogSearch: React.FC = () => {
       {error && <p style={{ color: '#d9534f', fontSize: '14px', marginTop: '15px' }}>⚠️ {error}</p>}
 
       {!loading && (selectedDogImage || selectedAttributes) && (
+<Card sx={{ width: 320, marginTop: '20px', mx: 'auto', backgroundColor: '#dccebafb' }}>
+  <div>
+     <CardHeader
+        action={
+          <Checkbox
+            icon={<FavoriteBorder />}
+            checkedIcon={<Favorite sx={{ color: 'red' }} />}
+            // checked={isFavorite}
+            // onChange={(e) => setIsFavorite(e.target.checked)}
+            // inputProps={{ 'aria-label': 'add to favorites' }}
+          />
+        }
+        title="Card Title"
+        subheader="September 14, 2026"
+      />
+  <CardContent>
+  <Typography sx={{ fontWeight: 'bold' }} level="title-lg">{selectedAttributes.name} Profile</Typography>
+  
+  {selectedAttributes && (
         <div style={{ marginTop: '25px', border: '1px solid #eee', padding: '15px', borderRadius: '8px', background: '#fafafa' }}>
-          
+         <IconButton
+          aria-label="bookmark Bahamas Islands"
+          color="default"
+          size="small"
+          //want position to be top right corner of the card, but not overlapping the image or text
+          sx={{ position: 'absolute' }}
+        >
+          <FavoriteBorder />
+        </IconButton>
           {selectedDogImage && (
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <img
@@ -248,9 +280,7 @@ export const DogSearch: React.FC = () => {
             <div>
               <h3 style={{ textTransform: 'capitalize', marginTop: '0' }}>{selectedAttributes.name} Profile</h3>
               <p style={{ fontSize: '14px', color: '#555', lineHeight: '1.5' }}>{selectedAttributes.description || 'No description available.'}</p>
-              
               <hr style={{ border: '0', borderTop: '1px solid #ddd', margin: '15px 0' }} />
-              
               <ul style={{ paddingLeft: '20px', fontSize: '14px', lineHeight: '1.8' }}>
                 <li><strong>Lifespan:</strong> {selectedAttributes.life.min} - {selectedAttributes.life.max} years</li>
                 <li><strong>Hypoallergenic:</strong> {selectedAttributes.hypoallergenic ? 'Yes' : 'No'}</li>
@@ -259,8 +289,12 @@ export const DogSearch: React.FC = () => {
               </ul>
             </div>
           )}
-        </div> )}
+        </div>
+         )}
+         </CardContent>
+         </div>
+        </Card>
+      )}
     </div>
   );
-  
 };

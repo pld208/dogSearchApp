@@ -6,8 +6,8 @@ export default function Home() {
   return (
     <Container>
       <Navbar />
-      <Typography variant="h4" gutterBottom>
-        Dog Breed Search App
+      <Typography align="center" sx={{ p: 2, mt: 4 }} variant="h4" gutterBottom>
+        Doggo Explorer
       </Typography>
       <DogSearch />
     </Container>
