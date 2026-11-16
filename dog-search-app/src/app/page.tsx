@@ -7,7 +7,7 @@ export default function Home() {
     <Container>
       <Navbar />
       <Typography align="center" sx={{ p: 2, mt: 4 }} variant="h4" gutterBottom>
-        Doggo Explorer
+        Doggo Dictionary
       </Typography>
       <DogSearch />
     </Container>

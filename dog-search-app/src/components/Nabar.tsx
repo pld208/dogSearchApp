@@ -2,6 +2,7 @@ import { AppBar, Toolbar, Typography, Box, Button, IconButton} from '@mui/materi
 import MenuIcon from '@mui/icons-material/Menu';
 import Image from 'next/image';
 import Link from 'next/link';
+import AuthButton from './AuthButton';
 
 export default function ButtonAppBar() {
   return (
@@ -29,7 +30,8 @@ export default function ButtonAppBar() {
             />
           </Link>
       
-          <Button color="inherit">Login</Button>
+          <Box sx={{ flexGrow: 1 }} />
+          <AuthButton />
         </Toolbar>
       </AppBar>
   

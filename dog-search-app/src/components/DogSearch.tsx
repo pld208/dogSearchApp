@@ -5,6 +5,9 @@ import { Card, CardHeader, IconButton, Typography, Checkbox } from '@mui/materia
 import CardContent from '@mui/material/CardContent';
 import { FavoriteBorder, Favorite } from '@mui/icons-material';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import { Favorites } from './Favorites';
+import { getFavorites, toggleFavorite, type FavoriteDog } from '@/src/app/actions/favorites';
 
 // Dog CEO API for IMAGES
 interface DogCeoResponse {
@@ -34,18 +37,59 @@ const STOCK_DOG_IMAGE = "/dog-placeholder.svg";
 
 export const DogSearch: React.FC = () => {
   const [allBreeds, setAllBreeds] = useState<string[]>([]);
+  const [breedMap, setBreedMap] = useState<Record<string, string[]>>({});
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filteredBreeds, setFilteredBreeds] = useState<string[]>([]);
-  const [selectedDogImage, setSelectedDogImage] = useState<string | null>(null);
+  const [showBreedSuggestions, setShowBreedSuggestions] = useState<boolean>(false);
+  const filteredBreeds = showBreedSuggestions && searchTerm
+    ? allBreeds.filter((breed) =>
+        breed.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+  // All photos for the current breed, plus which one is showing.
+  // Arrows only change imageIndex, so the facts never refetch.
+  const [dogImages, setDogImages] = useState<string[]>([]);
+  const [imageIndex, setImageIndex] = useState<number>(0);
+  const selectedDogImage = dogImages[imageIndex] ?? null;
+
+  const showPrevImage = () =>
+    setImageIndex((i) => (i - 1 + dogImages.length) % dogImages.length);
+  const showNextImage = () =>
+    setImageIndex((i) => (i + 1) % dogImages.length);
   const [selectedAttributes, setSelectedAttributes] = useState<DogAttributeData['attributes'] | null>(null);
+  // The breed that was actually searched (searchTerm changes as the user types)
+  const [searchedBreed, setSearchedBreed] = useState<string>('');
+  const cardBreedName = selectedAttributes?.name ?? searchedBreed;
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Favorites are saved in Postgres (Supabase) through server actions.
+  const [favorites, setFavorites] = useState<FavoriteDog[]>([]);
+  const [savingFavorite, setSavingFavorite] = useState<boolean>(false);
+
+  useEffect(() => {
+    getFavorites()
+      .then(setFavorites)
+      .catch((err) => console.error('Could not load favorites:', err));
+  }, []);
+
+  const handleToggleFavorite = async (breed: string, imageUrl: string | null) => {
+    setSavingFavorite(true);
+    try {
+      setFavorites(await toggleFavorite(breed, imageUrl));
+    } catch (err) {
+      console.error('Could not save favorite:', err);
+      setError('Could not save your favorite. Please try again.');
+    } finally {
+      setSavingFavorite(false);
+    }
+  };
 
   useEffect(() => {
     const fetchAllBreeds = async () => {
       try {
         const response = await fetch("https://dog.ceo/api/breeds/list/all");
         const data: DogCeoResponse = await response.json();
+        setBreedMap(data.message);
         setAllBreeds(Object.keys(data.message));
       } catch (error) {
         setError("Failed to fetch dog breeds");
@@ -54,18 +98,6 @@ export const DogSearch: React.FC = () => {
 
     fetchAllBreeds();
   }, []);
-
-  // 2. Filter input suggestions
-  useEffect(() => {
-    if (!searchTerm) {
-      setFilteredBreeds([]);
-      return;
-    }
-    const results = allBreeds.filter((breed) =>
-      breed.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredBreeds(results);
-  }, [searchTerm, allBreeds]);
 
   // Fix breed names between Dog CEO API and Dog API
   const formatBreedNames = (ceoBreedName: string): string => {
@@ -87,70 +119,109 @@ export const DogSearch: React.FC = () => {
     return lowerCaseBreed;
   };
 
+  // Convert user input (e.g. "labrador retriever", "golden retriever") into a
+  // valid Dog CEO path (e.g. "labrador", "retriever/golden"). Returns null if
+  // no matching breed exists, so we never request a URL that will 404.
+  const toCeoBreedPath = (input: string): string | null => {
+    const name = input.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (!name) return null;
+
+    const reverseOverrides: Record<string, string> = {
+      "labrador retriever": "labrador",
+      "golden retriever": "retriever/golden",
+      "german shepherd": "germanshepherd",
+      "saint bernard": "stbernard",
+      "st bernard": "stbernard",
+      "coton de tulear": "cotondetulear",
+    };
+    if (reverseOverrides[name]) return reverseOverrides[name];
+
+    // Exact top-level breed ("boxer") or with spaces removed ("german shepherd")
+    if (breedMap[name]) return name;
+    const joined = name.replace(/ /g, '');
+    if (breedMap[joined]) return joined;
+
+    // Sub-breed, in either word order ("english bulldog" -> "bulldog/english")
+    for (const [breed, subs] of Object.entries(breedMap)) {
+      for (const sub of subs) {
+        if (name === `${sub} ${breed}` || name === `${breed} ${sub}`) {
+          return `${breed}/${sub}`;
+        }
+      }
+    }
+
+    // Last resort: any single word that is a known breed
+    const word = name.split(' ').find((w) => breedMap[w]);
+    return word ?? null;
+  };
+
   // Selecting a suggestion just fills the input, like Google's autocomplete —
   // the actual search runs separately (Enter key or the search icon).
   const handleSuggestionClick = (breedName: string) => {
     setSearchTerm(breedName);
-    setFilteredBreeds([]);
+    setShowBreedSuggestions(false);
   };
 
   // 3. Fetch dog image and attributes
   const handleSearch = async (breedName: string) => {
     if (!breedName.trim()) return;
 
+    setSearchTerm(breedName);
+    setSearchedBreed(breedName.trim());
     setLoading(true);
     setError(null);
-    setFilteredBreeds([]);
-    setSelectedDogImage(null);
+    setShowBreedSuggestions(false);
+    setDogImages([]);
+    setImageIndex(0);
     setSelectedAttributes(null);
 
     // Normalize breed names for Dog API attributes
     const normalizedBreedName = formatBreedNames(breedName);
 
     try {
-      //grab random images; fall back to a stock image if the breed has no photo
-      const imagePromise = fetch(`https://dog.ceo/api/breed/${breedName}/images/random`)
-        .then((res) => res.json())
-        .then((data) => data.message as string)
-        .catch(() => STOCK_DOG_IMAGE);
+      // Grab up to 10 random photos; fall back to a stock image if the breed has none
+      const ceoPath = toCeoBreedPath(breedName);
+      const imagePromise: Promise<string[]> = ceoPath
+        ? fetch(`https://dog.ceo/api/breed/${ceoPath}/images/random/10`)
+            .then((res) => res.json())
+            .then((data) =>
+              data.status === 'success' && Array.isArray(data.message)
+                ? Array.from(new Set(data.message as string[])) // drop duplicates
+                : []
+            )
+            .catch(() => [])
+        : Promise.resolve([]);
 
-      // Query Dog API for attributes (the API ignores query filters, so fetch
-      // the full list and match client-side)
-      const attributesPromise = await fetch(`https://dogapi.dog/api/v2/breeds`)
+      // Query Dog API for attributes. The API is paginated (30 per page by
+      // default), so request one large page to get all ~283 breeds, then
+      // match client-side.
+      const attributesPromise = fetch(`https://dogapi.dog/api/v2/breeds?page%5Bsize%5D=500`)
         .then((res) => res.json())
         .then((resData: DogApiSearchResponse) => {
-          const exactMatch = resData.data.find(
-            (b) => b.attributes.name.toLowerCase() === normalizedBreedName
-          );
-          return exactMatch ? exactMatch.attributes : null;
-        });
+          const breeds = resData.data;
+          // Exact match first, then substring match (e.g. "airedale" -> "Airedale Terrier")
+          const match =
+            breeds.find((b) => b.attributes.name.toLowerCase() === normalizedBreedName) ??
+            breeds.find((b) => {
+              const name = b.attributes.name.toLowerCase();
+              return name.includes(normalizedBreedName) || normalizedBreedName.includes(name);
+            });
+          return match ? match.attributes : null;
+        })
+        .catch(() => null);
 
       // Fetch attributes from Dog API parallel to image fetch
-      const [imgUrl, attributes] = await Promise.all([imagePromise, attributesPromise]);
+      const [imgUrls, attributes] = await Promise.all([imagePromise, attributesPromise]);
 
-      setSelectedDogImage(imgUrl || STOCK_DOG_IMAGE);
+      setDogImages(imgUrls.length > 0 ? imgUrls : [STOCK_DOG_IMAGE]);
       setSelectedAttributes(attributes);
 
-      // Fallback strategy: If explicit string match failed, do a broader partial scan of the dataset
       if (!attributes) {
-        const fallbackResponse = await fetch('https://dogapi.dog/api/v2/breeds');
-        const fallbackData: DogApiSearchResponse = await fallbackResponse.json();
-
-        // Dynamic substring matching fallback (e.g. finding "Airedale Terrier" when given "airedale")
-        const partialMatch = fallbackData.data.find(b =>
-          b.attributes.name.toLowerCase().includes(normalizedBreedName) ||
-          normalizedBreedName.includes(b.attributes.name.toLowerCase())
-        );
-
-        if (partialMatch) {
-          setSelectedAttributes(partialMatch.attributes);
-        } else {
-          setError(`Facts are still being pondered for "${normalizedBreedName}", so sorry!`);
-        }
+        setError(`Facts are still being pondered for "${normalizedBreedName}", so sorry!`);
       }
     } catch (err) {
       console.error('Ruh-roh! Error fetching dog details:', err);
-      setSelectedDogImage(STOCK_DOG_IMAGE);
+      setDogImages([STOCK_DOG_IMAGE]);
       setError('Failed to fetch data from API endpoints.');
     } finally {
       setLoading(false);
@@ -165,7 +236,10 @@ export const DogSearch: React.FC = () => {
           type="text"
           placeholder="Woof woof, type breed name (e.g., poodle, boxer)..."
           value={searchTerm}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            setSearchTerm(e.target.value);
+            setShowBreedSuggestions(true);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleSearch(searchTerm);
           }}
@@ -227,6 +301,12 @@ export const DogSearch: React.FC = () => {
         )}
       </div>
 
+      <Favorites
+        favorites={favorites}
+        onSelect={handleSearch}
+        onRemove={(breed) => handleToggleFavorite(breed, null)}
+      />
+
       {loading && (
          
   <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px' }}>
@@ -241,30 +321,21 @@ export const DogSearch: React.FC = () => {
      <CardHeader
         action={
           <Checkbox
-            icon={<FavoriteBorder />}
+            icon={<FavoriteBorder sx={{ color: 'red' }} />}
             checkedIcon={<Favorite sx={{ color: 'red' }} />}
-            // checked={isFavorite}
-            // onChange={(e) => setIsFavorite(e.target.checked)}
-            // inputProps={{ 'aria-label': 'add to favorites' }}
+            checked={favorites.some((f) => f.breed.toLowerCase() === cardBreedName.toLowerCase())}
+            disabled={savingFavorite}
+            onChange={() => handleToggleFavorite(cardBreedName, selectedDogImage)}
+            slotProps={{ input: { 'aria-label': 'add to favorites' } }}
           />
         }
-        title="Card Title"
-        subheader="September 14, 2026"
+        title={cardBreedName}
+        titletypographyprops={{ fontWeight: 'bold' }}
       />
   <CardContent>
-  <Typography sx={{ fontWeight: 'bold' }} level="title-lg">{selectedAttributes.name} Profile</Typography>
-  
-  {selectedAttributes && (
-        <div style={{ marginTop: '25px', border: '1px solid #eee', padding: '15px', borderRadius: '8px', background: '#fafafa' }}>
-         <IconButton
-          aria-label="bookmark Bahamas Islands"
-          color="default"
-          size="small"
-          //want position to be top right corner of the card, but not overlapping the image or text
-          sx={{ position: 'absolute' }}
-        >
-          <FavoriteBorder />
-        </IconButton>
+
+  {(selectedDogImage || selectedAttributes) && (
+        <div style={{ marginTop: '5px', border: '1px solid #eee', padding: '15px', borderRadius: '8px', background: '#fafafa' }}>
           {selectedDogImage && (
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <img
@@ -273,6 +344,19 @@ export const DogSearch: React.FC = () => {
                 onError={(e) => { e.currentTarget.src = STOCK_DOG_IMAGE; }}
                 style={{ maxWidth: '100%', maxHeight: '300px', objectFit: 'cover', borderRadius: '6px' }}
               />
+              {dogImages.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginTop: '10px' }}>
+                  <IconButton aria-label="Previous photo" onClick={showPrevImage} size="small">
+                    <ArrowBackIosNewIcon sx={{ fontSize: '18px', color: '#666' }} />
+                  </IconButton>
+                  <Typography variant="body2" sx={{ color: '#666' }}>
+                    {imageIndex + 1} / {dogImages.length}
+                  </Typography>
+                  <IconButton aria-label="Next photo" onClick={showNextImage} size="small">
+                    <ArrowForwardIosIcon sx={{ fontSize: '18px', color: '#666' }} />
+                  </IconButton>
+                </div>
+              )}
             </div>
           )}
 
