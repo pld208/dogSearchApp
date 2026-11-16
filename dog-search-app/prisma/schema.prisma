@@ -1,0 +1,54 @@
+// Prisma schema for Doggo Dictionary.
+// Breed facts and photos come from external APIs, so the database only
+// stores data that belongs to our users.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// A visitor. For now each browser gets a guest id stored in a cookie.
+// When Supabase Auth is added, this id can be set to the auth user's id.
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  createdAt    DateTime      @default(now()) @map("created_at")
+  favorites    Favorite[]
+  chatMessages ChatMessage[]
+
+  @@map("users")
+}
+
+model Favorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  breed     String
+  imageUrl  String?  @map("image_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, breed])
+  @@map("favorites")
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+// History for the planned AI breed chat.
+model ChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      ChatRole
+  content   String
+  breed     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("chat_messages")
+}
