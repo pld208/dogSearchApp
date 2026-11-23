@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Avatar, Button, IconButton, Menu, MenuItem, Tooltip, Typography } from "@mui/material";
+import { Avatar, Box, Button, IconButton, Menu, MenuItem, Tooltip, Typography } from "@mui/material";
 import GoogleIcon from "@mui/icons-material/Google";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/src/lib/supabase/client";
@@ -45,8 +45,15 @@ export default function AuthButton() {
 
   if (!user) {
     return (
-      <Button color="inherit" startIcon={<GoogleIcon />} onClick={signInWithGoogle}>
-        Login
+      <Button
+        color="inherit"
+        startIcon={<GoogleIcon />}
+        onClick={signInWithGoogle}
+        aria-label="Login with Google"
+        // Icon only on phones so the navbar fits
+        sx={{ flexShrink: 0, minWidth: 0, '& .MuiButton-startIcon': { mr: { xs: 0, sm: 1 } } }}
+      >
+        <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Login</Box>
       </Button>
     );
   }
